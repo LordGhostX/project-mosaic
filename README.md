@@ -112,3 +112,61 @@ For loading `.lz4` files into ClickHouse, see:
 ```text
 https://clickhouse.com/docs/sql-reference/statements/insert-into#inserting-data-from-a-file
 ```
+
+## Data Format
+
+Each `node fills` record is a fill event encoded as:
+
+```jsonc
+[
+  "string", // trader/user address
+  {
+    "coin": "string",          // market symbol, e.g. BTC
+    "px": "decimal string",    // fill price
+    "sz": "decimal string",    // fill size
+    "side": "string",          // B = buy, A = sell
+    "time": "integer",         // fill timestamp in milliseconds
+    "startPosition": "decimal string", // position before/at fill
+    "dir": "string",           // trade direction, e.g. Open Long
+    "closedPnl": "decimal string", // realized PnL from this fill
+    "hash": "string",          // transaction hash
+    "oid": "integer",          // order id
+    "crossed": "boolean",      // whether liquidity was crossed
+    "fee": "decimal string",   // fee amount
+    "tid": "integer",          // trade id
+    "feeToken": "string"       // fee token, e.g. USDC
+  }
+]
+```
+
+Each `node fills by block` record groups fill events by block:
+
+```jsonc
+{
+  "local_time": "timestamp string", // local ingestion timestamp
+  "block_time": "timestamp string", // block timestamp
+  "block_number": "integer",        // block number
+  "events": [
+    [
+      "string", // trader/user address
+      {
+        "coin": "string",          // market symbol, e.g. SUI
+        "px": "decimal string",    // fill price
+        "sz": "decimal string",    // fill size
+        "side": "string",          // B = buy, A = sell
+        "time": "integer",         // fill timestamp in milliseconds
+        "startPosition": "decimal string", // position before/at fill
+        "dir": "string",           // trade direction, e.g. Open Short
+        "closedPnl": "decimal string", // realized PnL from this fill
+        "hash": "string",          // transaction hash
+        "oid": "integer",          // order id
+        "crossed": "boolean",      // whether liquidity was crossed
+        "fee": "decimal string",   // fee amount
+        "tid": "integer",          // trade id
+        "cloid": "string",         // optional client order id
+        "feeToken": "string"       // fee token, e.g. USDC
+      }
+    ]
+  ]
+}
+```
