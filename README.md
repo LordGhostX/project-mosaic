@@ -1,4 +1,4 @@
-# Mosaic Strategy
+# Project Mosaic
 
 ## Hyperliquid Fills Data
 

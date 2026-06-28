@@ -1,4 +1,4 @@
-# Mosaic Strategy
+# Project Mosaic
 
 **Copy the signal, not the personality.**
 
@@ -6,75 +6,69 @@
 
 ## Overview
 
-Mosaic Strategy is a Hyperliquid-native strategy platform that turns the behavior of proven traders into risk-managed trading strategies.
+Project Mosaic is a Hyperliquid-native strategy platform that turns the behavior of proven traders into risk-managed trading strategies.
 
-Users do not copy individual traders. They select a Mosaic strategy with a defined mandate, risk profile, execution mode, and rebalance cadence.
+Instead of asking users to copy individual traders, Mosaic lets them choose strategy products with defined mandates, risk profiles, execution modes, and rebalance cadences.
 
-Mosaic discovers high-signal traders, filters out noise, aggregates qualified behavior, and converts that intelligence into executable market exposure.
+Mosaic identifies high-signal traders, filters out noise, aggregates qualified behavior, and converts that intelligence into executable market exposure.
 
-Users can participate through:
+Users can participate through two product modes:
 
 1. **Mosaic Vaults**  
    Users deposit into a Mosaic-managed strategy vault.
 
 2. **Mosaic Connected Wallet**  
-   Users connect their wallet or Hyperliquid account and allow Mosaic to execute strategy-driven trades directly in their account, subject to permissions and risk limits.
+   Users connect a wallet or Hyperliquid account and allow Mosaic to execute strategy-driven trades directly in their account, subject to permissions and risk limits.
 
-Mosaic is not “copy this trader.”
-
-It is a risk-managed strategy layer powered by selected trader intelligence.
+Mosaic is not a “copy this trader” product. It is a risk-managed strategy layer powered by selected trader intelligence.
 
 ## Problem
 
-Copy trading forces users to pick traders from noisy leaderboards.
+Copy trading forces users to choose traders from noisy leaderboards.
 
-Most users cannot tell whether a trader’s performance is repeatable, leverage-driven, lucky, manipulated, or already decaying. They chase recent winners, overallocate to risky traders, and lose confidence when performance reverses.
+Most users cannot tell whether a trader’s performance is repeatable, leverage-driven, lucky, manipulated, or already decaying. As a result, they often chase recent winners, overallocate to risky traders, and lose confidence when performance reverses.
 
 Existing copy-trading products focus on personalities, rankings, and recent PnL. They rarely answer the questions that matter:
 
 - Is the trader’s edge repeatable?
-- Is performance real after fees, funding, and slippage?
-- Is leverage being used safely?
+- Does performance hold up after fees, funding, and slippage?
+- Is leverage being used responsibly?
 - Can the strategy scale?
 - Is the trader taking hidden tail risk?
 - Is the signal improving or decaying?
 
-There is valuable trader intelligence onchain and on Hyperliquid, but it is fragmented, noisy, and difficult to use.
+There is valuable trader intelligence on-chain and on Hyperliquid, but it is fragmented, noisy, and difficult to use.
 
 ## Solution
 
-Replace trader selection with strategy selection.
+Mosaic replaces trader selection with strategy selection.
 
-Mosaic Strategy:
+Each Mosaic strategy:
 
 - Discovers strong Hyperliquid traders
-- Scores them by performance, risk, consistency, and capacity
+- Scores traders by performance, risk, consistency, and capacity
 - Filters out excessive leverage, suspicious behavior, and one-off winners
 - Aggregates qualified behavior into target exposures
 - Converts trader behavior into strategy-level signals
 - Executes through managed vaults or connected-wallet automation
 - Applies risk controls before execution
-- Removes or reduces trader influence when behavior deteriorates
+- Reduces or removes trader influence when behavior deteriorates
 
-The goal is not to blindly copy trades.
-
-The goal is to extract useful signal from trader behavior and convert it into controlled strategy exposure.
+The goal is not to blindly copy trades. The goal is to extract useful signal from trader behavior and convert it into controlled strategy exposure.
 
 ## Why Mosaic
 
-The name **Mosaic** works because the strategy is built from many carefully selected pieces.
+The name **Mosaic** works because each strategy is built from many carefully selected pieces.
 
-One trader may be noisy, risky, lucky, or hard to evaluate. A filtered group of traders can produce a stronger, more stable signal.
+A single trader may be noisy, risky, lucky, or difficult to evaluate. A filtered group of qualified traders can produce a stronger and more stable signal.
 
-Mosaic does not sell trader personalities.
-
-It builds investable strategies from fragmented trader intelligence.
+Mosaic does not sell trader personalities. It builds investable strategies from fragmented trader intelligence.
 
 ## Why Hyperliquid
 
-Hyperliquid is the right first venue because it has:
+Hyperliquid is the right first venue because it offers:
 
-- Active perp markets
+- Active perpetual futures markets
 - Public trader behavior
 - Wallet-level trading data
 - Native vault mechanics
@@ -82,11 +76,11 @@ Hyperliquid is the right first venue because it has:
 - API and WebSocket support
 - A strong perp-native user base
 
-This makes it well suited for trader discovery, paper strategy research, live monitoring, vault execution, and connected-wallet automation.
+These features make Hyperliquid well suited for trader discovery, paper strategy research, live monitoring, vault execution, and connected-wallet automation.
 
 ## Core Product
 
-Mosaic should launch Hyperliquid-only with one or two strategies.
+Mosaic should launch as a Hyperliquid-only strategy platform with one or two strategies.
 
 The first version should focus on research and paper trading before live execution. Over time, Mosaic can support both pooled strategy vaults and connected-wallet execution.
 
@@ -109,26 +103,26 @@ The vault handles:
 - Capacity limits
 - Withdrawals
 
-This mode is best for users who want simple, passive exposure to a Mosaic strategy.
+This mode is designed for users who want simple, passive exposure to a Mosaic strategy.
 
 ### 2. Mosaic Connected Wallet
 
-Users connect their wallet or Hyperliquid account and allow Mosaic to execute strategy trades directly in their account.
+Users connect a wallet or Hyperliquid account and allow Mosaic to execute strategy trades directly in their account.
 
 The user chooses:
 
 - Strategy
 - Allocation size
-- Max leverage
-- Max drawdown
-- Max position size
+- Maximum leverage
+- Maximum drawdown
+- Maximum position size
 - Asset restrictions
 - Emergency stop settings
 - Automatic or approval-based execution
 
 Mosaic sends trades to the user’s account based on strategy-level target exposures.
 
-This mode should use minimum required permissions and should never require withdrawal permissions.
+This mode should use the minimum permissions required and should never require withdrawal permissions.
 
 ## Initial Strategies
 
@@ -209,23 +203,22 @@ Mosaic scores traders across:
 - Recovery after losses
 - Exposure quality
 
-The goal is not to find the highest-return trader.  
-The goal is to find traders whose behavior can improve a strategy after real execution costs.
+The goal is not to find the highest-return trader. The goal is to find traders whose behavior can improve a strategy after real execution costs.
 
 ### 4. Aggregate Signals
 
 Mosaic uses signal replication, not trade-by-trade copying.
 
-It reads selected trader behavior, estimates aggregate target exposures, nets conflicts, applies risk limits, and produces a clean strategy portfolio.
+It reads selected trader behavior, estimates aggregate target exposures, nets conflicting signals, applies risk limits, and produces a clean strategy portfolio.
 
-Mosaic asks:
+Mosaic evaluates:
 
-- What assets are qualified traders accumulating?
-- Which direction is the high-quality cohort leaning?
-- How much conviction is visible?
-- Which signals are crowded, stale, or too risky?
-- Which exposures survive fees, funding, and slippage?
-- Which trades fit the selected risk profile?
+- Which assets qualified traders are accumulating
+- Which direction the high-quality cohort is leaning
+- How much conviction is visible
+- Which signals are crowded, stale, or too risky
+- Which exposures survive fees, funding, and slippage
+- Which trades fit the selected risk profile
 
 This captures trader intelligence while reducing noise, leverage risk, and unnecessary churn.
 
@@ -241,13 +234,13 @@ Execution can happen through:
 
 Risk controls include:
 
-- Max leverage
-- Max drawdown
-- Max liquidation proximity
-- Max exposure per asset
-- Max directional beta
-- Max trader contribution
-- Max trade size versus market depth
+- Maximum leverage
+- Maximum drawdown
+- Maximum liquidation proximity
+- Maximum exposure per asset
+- Maximum directional beta
+- Maximum trader contribution
+- Maximum trade size versus market depth
 - Capacity caps
 - Emergency de-risking
 - Trade pause authority
@@ -258,14 +251,14 @@ The execution layer should prioritize controlled exposure over perfect replicati
 
 ## Connected Wallet Experience
 
-The connected-wallet experience should be simple and safe.
+The connected-wallet experience should be simple, transparent, and safe.
 
 A user should be able to:
 
-1. Visit **Mosaic Strategy**
-2. Connect their wallet or Hyperliquid account
+1. Visit **Project Mosaic**
+2. Connect a wallet or Hyperliquid account
 3. Choose a Mosaic strategy
-4. Select allocation amount
+4. Select an allocation amount
 5. Set risk limits
 6. Review permissions
 7. Activate strategy execution
@@ -278,14 +271,14 @@ The interface should show:
 - Open positions
 - Recent trades
 - Historical performance
-- Max drawdown
+- Maximum drawdown
 - User-defined risk limits
 - Current leverage
 - Liquidation proximity
 - Capacity status
 - Fees, funding, and execution costs
 - Strategy status
-- Pause or disconnect controls
+- Pause and disconnect controls
 
 Users should always understand what Mosaic can and cannot do with their account.
 
@@ -303,7 +296,7 @@ Users choose:
 - Allocation amount
 - Execution mode
 
-Execution modes:
+Execution modes include:
 
 - Deposit into Mosaic Vaults
 - Connect wallet for automated execution
@@ -314,7 +307,7 @@ Each strategy should show:
 - Mandate
 - Current exposure
 - Historical performance
-- Max drawdown
+- Maximum drawdown
 - Capacity status
 - Last rebalance summary
 - Risk status
@@ -322,7 +315,7 @@ Each strategy should show:
 - Connected-wallet permissions
 - Emergency stop controls
 
-Avoid raw trader leaderboards, entertainment-style trader profiles, hidden leverage, hidden fees, guaranteed-yield language, and personality-led marketing.
+Mosaic should avoid raw trader leaderboards, entertainment-style trader profiles, hidden leverage, hidden fees, guaranteed-yield language, and personality-led marketing.
 
 ## Key Differentiator
 
@@ -332,7 +325,7 @@ Mosaic extracts intelligence from trader behavior.
 
 The product does not sell personalities. It builds filtered, risk-managed strategies from the collective behavior of proven traders.
 
-Mosaic’s moat is the trader intelligence engine:
+Mosaic’s moat is its trader intelligence engine:
 
 - Discovery
 - Filtering
@@ -345,9 +338,7 @@ Mosaic’s moat is the trader intelligence engine:
 - Strategy-level reporting
 - User-specific risk settings
 
-Mosaic is not a leaderboard.
-
-It is a strategy execution layer for collective trader intelligence.
+Mosaic is not a leaderboard. It is a strategy execution layer for collective trader intelligence.
 
 ## Business Model
 
@@ -355,13 +346,13 @@ Mosaic should keep monetization simple and transparent.
 
 Revenue can come from:
 
-- **Performance fee** on strategy gains
-- **Execution fee** for connected-wallet automation
+- **Performance fees** on strategy gains
+- **Execution fees** for connected-wallet automation
 - **Subscription fees** for Hyperliquid data access
 
 Fees should be easy to understand and clearly disclosed before users allocate capital or enable execution.
 
-Avoid hidden costs, complicated fee stacks, and pricing that makes users feel performance is being quietly eroded.
+Mosaic should avoid hidden costs, complicated fee stacks, and pricing that makes users feel performance is being quietly eroded.
 
 ## Validation Roadmap
 
@@ -420,9 +411,7 @@ Success means:
 
 Launch publicly only after both vault and connected-wallet execution have been tested with real capital, real costs, real slippage, and real user behavior.
 
-The public product should start capped.
-
-Capacity discipline should be part of the brand.
+The public product should start capped. Capacity discipline should be part of the brand.
 
 ## Major Risks
 
@@ -460,13 +449,13 @@ The product should feel like controlled strategy infrastructure, not a gambling 
 
 ## Final Recommendation
 
-Proceed with **Mosaic Strategy** as the product name and **mosaicstrategy.xyz** as the primary domain.
+Proceed with **Project Mosaic** as the product name and **projectmosaic.xyz** as the primary domain.
 
-Start with a Hyperliquid-only strategy platform. Validate Mosaic Weekly and Mosaic Monthly through paper trading, then trade small internal capital, then launch one capped Mosaic Vault, and only then expand into connected-wallet execution for a limited beta.
+Start with a Hyperliquid-only strategy platform. Validate Mosaic Weekly and Mosaic Monthly through paper trading, then trade small internal capital, then launch one capped Mosaic Vault. Only after those steps should Mosaic expand into connected-wallet execution for a limited beta.
 
 Strongest positioning:
 
-**Mosaic Strategy turns collective Hyperliquid trader intelligence into risk-managed strategy execution.**
+**Project Mosaic turns collective Hyperliquid trader intelligence into risk-managed strategy execution.**
 
 Simpler version:
 
@@ -480,3 +469,7 @@ Product structure:
 - **Mosaic Connected Wallet** — user-account strategy automation
 
 Mosaic should become the trusted strategy layer between noisy trader behavior and controlled user execution.
+
+## Disclaimer
+
+Project Mosaic involves trading risk. Performance is not guaranteed, and strategies should be evaluated after fees, funding, slippage, drawdowns, and capacity constraints. Any live launch should include appropriate legal, compliance, security, and risk review.
