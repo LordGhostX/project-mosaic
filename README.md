@@ -80,13 +80,13 @@ aws s3 sync s3://hl-mainnet-node-data/node_fills/hourly/ \
   --request-payer requester
 ```
 
-### Download Node Fills By Block for 2025 Only
+### Download Node Fills By Block for 2026 Only
 
 ```shell
 aws s3 sync s3://hl-mainnet-node-data/node_fills_by_block/hourly/ \
   ./data/node_fills_by_block/ \
   --exclude "*" \
-  --include "2025*/*" \
+  --include "2026*/*" \
   --request-payer requester
 ```
 
@@ -138,25 +138,26 @@ python3 scripts/ingest_lz4.py data/node_fills_by_block
 
 The script normalizes fill events, inserts them into `hyperliquid.fills`, and records completed files in `hyperliquid.ingested_files` so reruns skip already-ingested data.
 
-```jsonc
-{
-  "address": "string",          // trader/user address
-  "coin": "string",             // raw Hyperliquid market symbol, e.g. BTC, PURR/USDC, @107
-  "asset_class": "string",      // perp or spot
-  "px": "decimal string",       // fill price
-  "sz": "decimal string",       // fill size
-  "side": "string",             // B = buy, A = sell
-  "time": "integer",            // fill timestamp in milliseconds
-  "start_position": "decimal string", // position before/at fill
-  "dir": "string",              // trade direction, e.g. Open Long
-  "closed_pnl": "decimal string", // realized PnL from this fill
-  "hash": "string",             // transaction hash
-  "oid": "integer",             // order id
-  "crossed": "boolean",         // whether liquidity was crossed
-  "fee": "decimal string",      // fee amount
-  "tid": "integer",             // trade id
-  "fee_token": "string"         // fee token, e.g. USDC
-}
+```sql clickhouse
+address         String                  -- trader/user address
+coin            LowCardinality(String)  -- market symbol, e.g. BTC, PURR/USDC, @107
+asset_class     LowCardinality(String)  -- asset class, e.g. perp or spot
+px              Decimal(20, 10)         -- fill price
+sz              Decimal(20, 10)         -- fill size
+side            LowCardinality(String)  -- B = buy, A = sell
+time            UInt64                  -- fill timestamp in milliseconds
+start_position  Decimal(20, 10)         -- position before fill
+dir             LowCardinality(String)  -- trade direction, e.g. Open Long
+closed_pnl      Decimal(20, 10)         -- realized PnL from this fill
+hash            String                  -- transaction hash
+oid             UInt64                  -- order id
+crossed         Bool                    -- whether liquidity was crossed
+fee             Decimal(20, 10)         -- fee amount
+tid             UInt64                  -- trade id
+fee_token       LowCardinality(String)  -- fee token, e.g. USDC
+twap_id         Nullable(UInt64)        -- TWAP id, if fill is associated with a TWAP order
 ```
 
 `asset_class` is derived from the `coin` value. A fill is `spot` if `coin` is `PURR/USDC` or an `@`-prefixed spot pair ID like `@107`; otherwise it is `perp`.
+
+For the full set of `dir` / direction values, see Hydromancer's schema reference: https://docs.hydromancer.xyz/reservoir/schema-reference/fills#direction-values

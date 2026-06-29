@@ -14,6 +14,7 @@ Options:
 import argparse
 import json
 import multiprocessing as mp
+import os
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -25,38 +26,18 @@ DEFAULT_DATABASE = "hyperliquid"
 DEFAULT_FILLS_TABLE = "fills"
 TRACKING_TABLE = "ingested_files"
 
-IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
 WORKER_CFG = None
 WORKER_CLIENT = None
 
-FILL_COLUMNS = [
-    "address",
-    "coin",
-    "asset_class",
-    "px",
-    "sz",
-    "side",
-    "time",
-    "start_position",
-    "dir",
-    "closed_pnl",
-    "hash",
-    "oid",
-    "crossed",
-    "fee",
-    "tid",
-    "fee_token",
-]
-
 
 def ident(s: str) -> str:
-    if not IDENT.match(s):
+    pattern = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    if not pattern.match(s):
         raise ValueError(f"Bad SQL identifier: {s}")
     return s
 
 
-def mode_for(path: Path) -> str:
+def get_mode(path: Path) -> str:
     if path.name in {"node_fills", "node_fills_by_block"}:
         return path.name
     raise ValueError("Input dir must be named node_fills or node_fills_by_block")
@@ -71,6 +52,12 @@ def dec(v) -> Decimal:
 def u64(v) -> int:
     if v in (None, ""):
         return 0
+    return int(v)
+
+
+def nullable_u64(v) -> int | None:
+    if v in (None, ""):
+        return None
     return int(v)
 
 
@@ -97,6 +84,7 @@ def fill_row(event):
         dec(fill.get("fee")),
         u64(fill.get("tid")),
         str(fill.get("feeToken", "")),
+        nullable_u64(fill.get("twapId")),
     )
 
 
@@ -148,11 +136,12 @@ def create_tables(client, db: str, fills_table: str):
             crossed Bool,
             fee Decimal(20, 10),
             tid UInt64,
-            fee_token LowCardinality(String)
+            fee_token LowCardinality(String),
+            twap_id Nullable(UInt64)
         )
         ENGINE = MergeTree
         PARTITION BY toYYYYMM(toDateTime(intDiv(time, 1000), 'UTC'))
-        ORDER BY (time, asset_class, address, coin, tid)
+        ORDER BY (time, address, asset_class, coin, tid)
     """)
 
     client.command(f"""
@@ -184,7 +173,25 @@ def ingest_one(task):
             WORKER_CFG["table"],
             rows,
             database=WORKER_CFG["database"],
-            column_names=FILL_COLUMNS,
+            column_names=[
+                "address",
+                "coin",
+                "asset_class",
+                "px",
+                "sz",
+                "side",
+                "time",
+                "start_position",
+                "dir",
+                "closed_pnl",
+                "hash",
+                "oid",
+                "crossed",
+                "fee",
+                "tid",
+                "fee_token",
+                "twap_id",
+            ],
         )
 
     WORKER_CLIENT.insert(
@@ -207,7 +214,7 @@ def main():
     p.add_argument("--password", default="")
     p.add_argument("--database", default=DEFAULT_DATABASE)
     p.add_argument("--table", default=DEFAULT_FILLS_TABLE)
-    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     args = p.parse_args()
 
     db = ident(args.database)
@@ -215,7 +222,7 @@ def main():
 
     input_dir = Path(args.input_dir).resolve()
     data_root = Path(args.data_root).resolve()
-    mode = mode_for(input_dir)
+    mode = get_mode(input_dir)
 
     cfg = {
         "host": args.host,
