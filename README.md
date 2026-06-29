@@ -1,6 +1,6 @@
 # Project Mosaic
 
-## Hyperliquid Fills Data
+## Hyperliquid Data
 
 ### Node Fills
 
@@ -80,7 +80,7 @@ aws s3 sync s3://hl-mainnet-node-data/node_fills/hourly/ \
   --request-payer requester
 ```
 
-### Download Node Fills by Block for 2025 Only
+### Download Node Fills By Block for 2025 Only
 
 ```shell
 aws s3 sync s3://hl-mainnet-node-data/node_fills_by_block/hourly/ \
@@ -90,30 +90,7 @@ aws s3 sync s3://hl-mainnet-node-data/node_fills_by_block/hourly/ \
   --request-payer requester
 ```
 
-### Extracting LZ4 Files
-
-Decompress all `.lz4` files under `./data/`:
-
-```shell
-find ./data/ -type f -name '*.lz4' \
-  -exec sh -c 'lz4 -d -f "$1" "${1%.lz4}"' _ {} \;
-```
-
-Delete the compressed `.lz4` files after successful extraction:
-
-```shell
-find ./data/ -type f -name '*.lz4' -delete
-```
-
-### Loading into ClickHouse
-
-For loading `.lz4` files into ClickHouse, see:
-
-```text
-https://clickhouse.com/docs/sql-reference/statements/insert-into#inserting-data-from-a-file
-```
-
-## Data Format
+### Data Format
 
 Each `node fills` record is a fill event encoded as:
 
@@ -146,27 +123,40 @@ Each `node fills by block` record groups fill events by block:
   "local_time": "timestamp string", // local ingestion timestamp
   "block_time": "timestamp string", // block timestamp
   "block_number": "integer",        // block number
-  "events": [
-    [
-      "string", // trader/user address
-      {
-        "coin": "string",          // market symbol, e.g. SUI
-        "px": "decimal string",    // fill price
-        "sz": "decimal string",    // fill size
-        "side": "string",          // B = buy, A = sell
-        "time": "integer",         // fill timestamp in milliseconds
-        "startPosition": "decimal string", // position before/at fill
-        "dir": "string",           // trade direction, e.g. Open Short
-        "closedPnl": "decimal string", // realized PnL from this fill
-        "hash": "string",          // transaction hash
-        "oid": "integer",          // order id
-        "crossed": "boolean",      // whether liquidity was crossed
-        "fee": "decimal string",   // fee amount
-        "tid": "integer",          // trade id
-        "cloid": "string",         // optional client order id
-        "feeToken": "string"       // fee token, e.g. USDC
-      }
-    ]
-  ]
+  "events": []                      // array of fill events in the same format as node_fills
 }
 ```
+
+### ClickHouse Ingestion
+
+Fill data can be ingested into ClickHouse with:
+
+```shell
+python3 scripts/ingest_lz4.py data/node_fills
+python3 scripts/ingest_lz4.py data/node_fills_by_block
+```
+
+The script normalizes fill events, inserts them into `hyperliquid.fills`, and records completed files in `hyperliquid.ingested_files` so reruns skip already-ingested data.
+
+```jsonc
+{
+  "address": "string",          // trader/user address
+  "coin": "string",             // raw Hyperliquid market symbol, e.g. BTC, PURR/USDC, @107
+  "asset_class": "string",      // perp or spot
+  "px": "decimal string",       // fill price
+  "sz": "decimal string",       // fill size
+  "side": "string",             // B = buy, A = sell
+  "time": "integer",            // fill timestamp in milliseconds
+  "start_position": "decimal string", // position before/at fill
+  "dir": "string",              // trade direction, e.g. Open Long
+  "closed_pnl": "decimal string", // realized PnL from this fill
+  "hash": "string",             // transaction hash
+  "oid": "integer",             // order id
+  "crossed": "boolean",         // whether liquidity was crossed
+  "fee": "decimal string",      // fee amount
+  "tid": "integer",             // trade id
+  "fee_token": "string"         // fee token, e.g. USDC
+}
+```
+
+`asset_class` is derived from the `coin` value. A fill is `spot` if `coin` is `PURR/USDC` or an `@`-prefixed spot pair ID like `@107`; otherwise it is `perp`.

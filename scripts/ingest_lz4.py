@@ -1,4 +1,6 @@
 """
+Ingest HL fills into ClickHouse
+
 Usage:
   python3 scripts/ingest_lz4.py data/node_fills
   python3 scripts/ingest_lz4.py data/node_fills_by_block
@@ -21,7 +23,7 @@ import lz4.frame
 
 DEFAULT_DATABASE = "hyperliquid"
 DEFAULT_FILLS_TABLE = "fills"
-TRACKING_TABLE = "ingested_lz4_files"
+TRACKING_TABLE = "ingested_files"
 
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -29,8 +31,9 @@ WORKER_CFG = None
 WORKER_CLIENT = None
 
 FILL_COLUMNS = [
-    "user_address",
+    "address",
     "coin",
+    "asset_class",
     "px",
     "sz",
     "side",
@@ -72,11 +75,15 @@ def u64(v) -> int:
 
 
 def fill_row(event):
-    user_address, fill = event[0], event[1]
+    address, fill = event[0], event[1]
+
+    coin = str(fill.get("coin", ""))
+    asset_class = "spot" if coin == "PURR/USDC" or coin.startswith("@") else "perp"
 
     return (
-        str(user_address),
-        str(fill.get("coin", "")),
+        str(address),
+        coin,
+        asset_class,
         dec(fill.get("px")),
         dec(fill.get("sz")),
         str(fill.get("side", "")),
@@ -126,25 +133,26 @@ def create_tables(client, db: str, fills_table: str):
     client.command(f"""
         CREATE TABLE IF NOT EXISTS {db}.{fills_table}
         (
-            user_address String,
-            coin String,
+            address String,
+            coin LowCardinality(String),
+            asset_class LowCardinality(String),
             px Decimal(20, 10),
             sz Decimal(20, 10),
-            side String,
+            side LowCardinality(String),
             time UInt64,
             start_position Decimal(20, 10),
-            dir String,
+            dir LowCardinality(String),
             closed_pnl Decimal(20, 10),
             hash String,
             oid UInt64,
             crossed Bool,
             fee Decimal(20, 10),
             tid UInt64,
-            fee_token String
+            fee_token LowCardinality(String)
         )
         ENGINE = MergeTree
         PARTITION BY toYYYYMM(toDateTime(intDiv(time, 1000), 'UTC'))
-        ORDER BY (coin, time, user_address, tid)
+        ORDER BY (time, asset_class, address, coin, tid)
     """)
 
     client.command(f"""
