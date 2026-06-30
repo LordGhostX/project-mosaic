@@ -1,3 +1,6 @@
+import time
+
+import pandas as pd
 import queries as q
 
 DEFAULT_CONFIG = {
@@ -90,3 +93,38 @@ def evaluate_candidates(candidates, **overrides):
         asset_class=config["asset_class"],
         exclude_base_columns=config["exclude_base_columns"],
     )
+
+
+def generate_all_evaluated():
+    start_date = pd.Timestamp("2025-07-01")
+    end_date = pd.Timestamp(q.get_fills_time_bounds()["last_fill_at"])
+
+    all_evaluated = []
+
+    rebalance_at = start_date
+
+    while rebalance_at <= end_date:
+        rebalance_str = rebalance_at.strftime("%Y-%m-%d")
+
+        r = load(rebalance_at=rebalance_str)
+        raw = r["candidates"]
+
+        filtered = filter_candidates(raw)
+        evaluated = evaluate_candidates(filtered, rebalance_at=rebalance_str)
+
+        evaluated["rebalance_at"] = rebalance_str
+
+        all_evaluated.append(evaluated)
+
+        rebalance_at += pd.Timedelta(days=7)
+
+    return pd.concat(all_evaluated, ignore_index=True)
+
+
+if __name__ == "__main__":
+    started_at = time.perf_counter()
+
+    all_evaluated = generate_all_evaluated()
+    all_evaluated.to_csv("../data/all_evaluated.csv", index=False)
+
+    print("Elapsed Seconds:", round(time.perf_counter() - started_at, 3))
