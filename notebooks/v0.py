@@ -4,11 +4,12 @@ DEFAULT_CONFIG = {
     "rebalance_at": "2025-07-01",
     "active_days": 7,
     "history_days": 30,
-    "min_active_fills": 1,
     "min_history_fills": 1,
     "min_net_pnl": 0,
     "asset_class": "perp",
     "candidate_limit": 0,
+    "forward_days": 7,
+    "exclude_base_columns": True,
 }
 
 
@@ -23,7 +24,6 @@ DEFAULT_FILTERS = {
     "min_crossed_fill_rate": 0,
     "max_history_fills_per_day": 50,
     "max_orders_per_day": 25,
-    "max_trades_per_day": 50,
     "max_flip_fill_rate": 0.25,
 }
 
@@ -35,7 +35,6 @@ def load(**overrides):
         config["rebalance_at"],
         active_days=config["active_days"],
         history_days=config["history_days"],
-        min_active_fills=config["min_active_fills"],
         min_history_fills=config["min_history_fills"],
         min_net_pnl=config["min_net_pnl"],
         asset_class=config["asset_class"],
@@ -66,7 +65,6 @@ def filter_candidates(candidates, **overrides):
     max_filters = {
         "history_fills_per_day": filters["max_history_fills_per_day"],
         "orders_per_day": filters["max_orders_per_day"],
-        "trades_per_day": filters["max_trades_per_day"],
         "flip_fill_rate": filters["max_flip_fill_rate"],
     }
 
@@ -79,3 +77,16 @@ def filter_candidates(candidates, **overrides):
             filtered = filtered[filtered[column] <= value]
 
     return filtered.sort_values("net_pnl", ascending=False).reset_index(drop=True)
+
+
+def evaluate_candidates(candidates, **overrides):
+    config = DEFAULT_CONFIG | overrides
+
+    return q.evaluate_candidates(
+        candidates,
+        config["rebalance_at"],
+        history_days=config["history_days"],
+        forward_days=config["forward_days"],
+        asset_class=config["asset_class"],
+        exclude_base_columns=config["exclude_base_columns"],
+    )
