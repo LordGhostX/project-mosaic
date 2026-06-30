@@ -31,9 +31,8 @@ WORKER_CLIENT = None
 
 
 def ident(s: str) -> str:
-    pattern = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-    if not pattern.match(s):
-        raise ValueError(f"Bad SQL identifier: {s}")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", s):
+        raise ValueError(f"Bad SQL identifier: {s!r}")
     return s
 
 

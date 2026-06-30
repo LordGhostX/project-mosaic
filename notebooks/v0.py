@@ -1,0 +1,81 @@
+import queries as q
+
+DEFAULT_CONFIG = {
+    "rebalance_at": "2025-07-01",
+    "active_days": 7,
+    "history_days": 30,
+    "min_active_fills": 1,
+    "min_history_fills": 1,
+    "min_net_pnl": 0,
+    "asset_class": "perp",
+    "candidate_limit": 0,
+}
+
+
+DEFAULT_FILTERS = {
+    "min_active_history_days": 14,
+    "min_net_pnl": 0,
+    "min_net_pnl_per_notional": 0.001,
+    "min_fee_rate_on_notional": 0,
+    "min_avg_seconds_between_fills": 600,
+    "min_close_fill_rate": 0.25,
+    "min_avg_fill_notional": 250,
+    "min_crossed_fill_rate": 0,
+    "max_history_fills_per_day": 50,
+    "max_orders_per_day": 25,
+    "max_trades_per_day": 50,
+    "max_flip_fill_rate": 0.25,
+}
+
+
+def load(**overrides):
+    config = DEFAULT_CONFIG | overrides
+
+    candidates = q.get_profitable_active_traders(
+        config["rebalance_at"],
+        active_days=config["active_days"],
+        history_days=config["history_days"],
+        min_active_fills=config["min_active_fills"],
+        min_history_fills=config["min_history_fills"],
+        min_net_pnl=config["min_net_pnl"],
+        asset_class=config["asset_class"],
+        limit=config["candidate_limit"],
+    )
+
+    return {
+        "config": config,
+        "fills_bounds": q.get_fills_time_bounds(),
+        "candidates": candidates,
+    }
+
+
+def filter_candidates(candidates, **overrides):
+    filters = DEFAULT_FILTERS | overrides
+    filtered = candidates.copy()
+
+    min_filters = {
+        "active_history_days": filters["min_active_history_days"],
+        "net_pnl": filters["min_net_pnl"],
+        "net_pnl_per_notional": filters["min_net_pnl_per_notional"],
+        "fee_rate_on_notional": filters["min_fee_rate_on_notional"],
+        "avg_seconds_between_fills": filters["min_avg_seconds_between_fills"],
+        "close_fill_rate": filters["min_close_fill_rate"],
+        "avg_fill_notional": filters["min_avg_fill_notional"],
+        "crossed_fill_rate": filters["min_crossed_fill_rate"],
+    }
+    max_filters = {
+        "history_fills_per_day": filters["max_history_fills_per_day"],
+        "orders_per_day": filters["max_orders_per_day"],
+        "trades_per_day": filters["max_trades_per_day"],
+        "flip_fill_rate": filters["max_flip_fill_rate"],
+    }
+
+    for column, value in min_filters.items():
+        if value is not None:
+            filtered = filtered[filtered[column] >= value]
+
+    for column, value in max_filters.items():
+        if value not in (None, 0):
+            filtered = filtered[filtered[column] <= value]
+
+    return filtered.sort_values("net_pnl", ascending=False).reset_index(drop=True)
