@@ -13,7 +13,7 @@ s3://hl-mainnet-node-data/node_fills/hourly/
 
 Check object count and total size:
 
-```shell
+```bash
 aws s3 ls s3://hl-mainnet-node-data/node_fills/hourly/ \
   --recursive \
   --summarize \
@@ -36,7 +36,7 @@ s3://hl-mainnet-node-data/node_fills_by_block/hourly/
 
 Check object count and total size:
 
-```shell
+```bash
 aws s3 ls s3://hl-mainnet-node-data/node_fills_by_block/hourly/ \
   --recursive \
   --summarize \
@@ -51,7 +51,7 @@ Total Objects: 8057
 
 Check object count and total size for `2025` data only:
 
-```shell
+```bash
 aws s3 ls s3://hl-mainnet-node-data/node_fills_by_block/hourly/ \
   --recursive \
   --request-payer requester \
@@ -74,7 +74,7 @@ Total Size: 86.20 GiB
 
 ### Download Node Fills
 
-```shell
+```bash
 aws s3 sync s3://hl-mainnet-node-data/node_fills/hourly/ \
   ./data/node_fills/ \
   --request-payer requester
@@ -82,7 +82,7 @@ aws s3 sync s3://hl-mainnet-node-data/node_fills/hourly/ \
 
 ### Download Node Fills By Block for 2026 Only
 
-```shell
+```bash
 aws s3 sync s3://hl-mainnet-node-data/node_fills_by_block/hourly/ \
   ./data/node_fills_by_block/ \
   --exclude "*" \
@@ -92,7 +92,7 @@ aws s3 sync s3://hl-mainnet-node-data/node_fills_by_block/hourly/ \
 
 ### Data Format
 
-Each `node fills` record is a fill event encoded as:
+Each `node_fills` record is a fill event encoded as:
 
 ```jsonc
 [
@@ -111,12 +111,13 @@ Each `node fills` record is a fill event encoded as:
     "crossed": "boolean",      // whether liquidity was crossed
     "fee": "decimal string",   // fee amount
     "tid": "integer",          // trade id
-    "feeToken": "string"       // fee token, e.g. USDC
+    "feeToken": "string",      // fee token, e.g. USDC
+    "twapId": "integer | null" // TWAP id, if associated with a TWAP order
   }
 ]
 ```
 
-Each `node fills by block` record groups fill events by block:
+Each `node_fills_by_block` record groups fill events by block:
 
 ```jsonc
 {
@@ -131,7 +132,7 @@ Each `node fills by block` record groups fill events by block:
 
 Fill data can be ingested into ClickHouse with:
 
-```shell
+```bash
 python3 scripts/ingest_lz4.py data/node_fills
 python3 scripts/ingest_lz4.py data/node_fills_by_block
 ```
