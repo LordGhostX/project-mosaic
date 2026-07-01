@@ -217,7 +217,7 @@ def main():
     p.add_argument("--password", default="")
     p.add_argument("--database", default=DEFAULT_DATABASE)
     p.add_argument("--table", default=DEFAULT_FILLS_TABLE)
-    p.add_argument("--workers", type=int, default=mp.cpu_count() or 4)
+    p.add_argument("--workers", type=int, default=4)
     args = p.parse_args()
 
     db = ident(args.database)
@@ -256,16 +256,14 @@ def main():
         print("done")
         return
 
-    workers = max(1, args.workers)
-
-    if workers == 1:
+    if args.workers == 1:
         init_worker(cfg)
         for task in tasks:
             file_key, rows = ingest_one(task)
             print(f"ingested: {file_key} rows={rows}")
     else:
         with mp.Pool(
-            processes=workers, initializer=init_worker, initargs=(cfg,)
+            processes=args.workers, initializer=init_worker, initargs=(cfg,)
         ) as pool:
             for file_key, rows in pool.imap_unordered(ingest_one, tasks):
                 print(f"ingested: {file_key} rows={rows}")

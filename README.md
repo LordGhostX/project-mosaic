@@ -163,6 +163,34 @@ twap_id         Nullable(UInt64)        -- TWAP id, if fill is associated with a
 
 For the full set of `dir` / direction values, see Hydromancer's schema reference: https://docs.hydromancer.xyz/reservoir/schema-reference/fills#direction-values
 
+### Build Candles
+
+After fills are ingested, OHLCV candles can be built from `hyperliquid.fills` with:
+
+```bash
+python3 scripts/build_candles.py
+python3 scripts/build_candles.py --overwrite
+```
+
+By default this writes 1-hour perp candles to `hyperliquid.candles`. It is incremental: reruns start from the last existing candle per coin and skip the current in-progress candle.
+
+```sql clickhouse
+bucket_start_ms UInt64                  -- candle start timestamp in milliseconds
+bucket_end_ms   UInt64                  -- candle end timestamp in milliseconds
+coin            LowCardinality(String)  -- market symbol, e.g. BTC or @107
+interval        LowCardinality(String)  -- candle interval, e.g. 1m, 5m, 1h, or 1d
+asset_class     LowCardinality(String)  -- asset class, e.g. perp or spot
+open            Decimal(20, 10)         -- first fill price in the candle
+high            Decimal(20, 10)         -- highest fill price in the candle
+low             Decimal(20, 10)         -- lowest fill price in the candle
+close           Decimal(20, 10)         -- last fill price in the candle
+volume_base     Decimal(20, 10)         -- total filled base size
+volume_quote    Decimal(20, 10)         -- total filled quote notional, px * sz
+updated_at      DateTime                -- candle row insertion/update timestamp
+```
+
+Supported intervals are fixed UTC-aligned intervals that divide evenly into a day, such as `1m`, `5m`, `15m`, `1h`, `4h`, or `1d`.
+
 ## Candidate Selection
 
 The basic loop is:
