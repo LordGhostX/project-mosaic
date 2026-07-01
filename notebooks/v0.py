@@ -295,7 +295,7 @@ def generate_all_evaluated(
         r = load(rebalance_at=rebalance_str, **overrides)
         raw = r["candidates"]
 
-        filtered = filter_candidates(raw)
+        filtered = filter_candidates(raw, **overrides)
         evaluated = evaluate_candidates(
             filtered,
             rebalance_at=rebalance_str,
@@ -519,6 +519,29 @@ def _close_positions(
     return kept_positions, closed, remaining_qty
 
 
+def _address_gross_exposure(
+    positions,
+    address,
+    price_lookup,
+    price_history,
+    hour_ms,
+):
+    exposure = 0.0
+    for position in positions:
+        if position["address"] != address:
+            continue
+        price, _, _ = u.lookup_price_with_fallback(
+            price_lookup,
+            price_history,
+            position["coin"],
+            hour_ms,
+        )
+        if price is None:
+            price = position["entry_price"]
+        exposure += position["qty"] * price
+    return exposure
+
+
 def _liquidate_positions(positions, price_lookup, price_history, hour, fee_rate):
     closed_trades = []
     failed_trades = []
@@ -603,9 +626,9 @@ def _add_benchmark_columns(
         value_column = f"benchmark_{normalized}_value"
         return_column = f"benchmark_{normalized}_return"
         prices = [
-            u.lookup_price_with_fallback(price_lookup, price_history, coin, int(hour_ms))[
-                0
-            ]
+            u.lookup_price_with_fallback(
+                price_lookup, price_history, coin, int(hour_ms)
+            )[0]
             for hour_ms in source_hour_ms
         ]
         price_series = pd.Series(prices, index=out.index, dtype="float64")
@@ -719,6 +742,7 @@ def backtest_candidates(
     asset_class="perp",
     leverage=1.0,
     fee_pct=0.0,
+    max_trader_exposure_ratio=1.0,
     eligible_only=True,
     benchmark_coins=("BTC", "ETH", "HYPE"),
 ):
@@ -730,6 +754,8 @@ def backtest_candidates(
         raise ValueError("starting_capital must be > 0")
     if leverage <= 0:
         raise ValueError("leverage must be > 0")
+    if max_trader_exposure_ratio is not None and max_trader_exposure_ratio < 0:
+        raise ValueError("max_trader_exposure_ratio must be >= 0 or None")
 
     started_at = time.perf_counter()
     fee_rate = fee_pct / 100
@@ -801,6 +827,11 @@ def backtest_candidates(
         )
         trader_budget = session_start_value / len(addresses)
         leveraged_trader_budget = trader_budget * leverage
+        trader_exposure_cap = (
+            leveraged_trader_budget * max_trader_exposure_ratio
+            if max_trader_exposure_ratio
+            else None
+        )
 
         history_fills = u.add_fill_buckets(
             q.get_trader_fills(
@@ -851,6 +882,7 @@ def backtest_candidates(
         selected.loc[group.index, "leveraged_trader_budget"] = leveraged_trader_budget
         selected.loc[group.index, "portfolio_start_value"] = session_start_value
         selected.loc[group.index, "leverage"] = leverage
+        selected.loc[group.index, "max_trader_exposure"] = trader_exposure_cap
 
         if forward_fills.empty:
             if compound_portfolio:
@@ -893,6 +925,10 @@ def backtest_candidates(
             ignored_same_hour_crosses = 0
             stake_opened = 0.0
             stake_closed = 0.0
+            requested_stake_opened = 0.0
+            clipped_stake_opened = 0.0
+            clipped_open_count = 0
+            skipped_open_count = 0
 
             for _, intent in hour_intents.iterrows():
                 address = intent["address"]
@@ -988,7 +1024,30 @@ def backtest_candidates(
                         )
 
                 if net_open_notional > 0:
-                    stake = net_open_notional * scale
+                    requested_stake = net_open_notional * scale
+                    trader_exposure_before = _address_gross_exposure(
+                        positions,
+                        address,
+                        price_lookup,
+                        price_history,
+                        source_hour_ms,
+                    )
+                    if trader_exposure_cap is None:
+                        available_trader_exposure = requested_stake
+                    else:
+                        available_trader_exposure = max(
+                            trader_exposure_cap - trader_exposure_before,
+                            0.0,
+                        )
+                    stake = min(requested_stake, available_trader_exposure)
+                    clipped_stake = max(requested_stake - stake, 0.0)
+                    requested_stake_opened += requested_stake
+                    clipped_stake_opened += clipped_stake
+                    clipped_open_count += int(clipped_stake > 1e-12 and stake > 1e-12)
+                    if stake <= 1e-12:
+                        skipped_open_count += 1
+                        continue
+
                     qty = stake / price
                     open_fee = stake * fee_rate
                     fees_paid += open_fee
@@ -1011,6 +1070,10 @@ def backtest_candidates(
                             "used_fallback_price": used_fallback_price,
                             "requested_hour_ms": source_hour_ms,
                             "price_hour_ms": price_hour_ms,
+                            "requested_stake": requested_stake,
+                            "clipped_stake": clipped_stake,
+                            "trader_exposure_before": trader_exposure_before,
+                            "trader_exposure_cap": trader_exposure_cap,
                         }
                     )
                     trades_opened += 1
@@ -1034,6 +1097,10 @@ def backtest_candidates(
                             "used_fallback_price": used_fallback_price,
                             "requested_hour_ms": source_hour_ms,
                             "price_hour_ms": price_hour_ms,
+                            "requested_stake": requested_stake,
+                            "clipped_stake": clipped_stake,
+                            "trader_exposure_before": trader_exposure_before,
+                            "trader_exposure_cap": trader_exposure_cap,
                         }
                     )
 
@@ -1065,6 +1132,10 @@ def backtest_candidates(
                     "ignored_same_hour_crosses": ignored_same_hour_crosses,
                     "stake_opened": stake_opened,
                     "stake_closed": stake_closed,
+                    "requested_stake_opened": requested_stake_opened,
+                    "clipped_stake_opened": clipped_stake_opened,
+                    "clipped_open_count": clipped_open_count,
+                    "skipped_open_count": skipped_open_count,
                     "fees_paid": fees_paid,
                     "price_failure_count": mark["price_failure_count"],
                     "price_fallback_count": mark["price_fallback_count"],
@@ -1133,6 +1204,10 @@ def backtest_candidates(
                     "ignored_same_hour_crosses": 0,
                     "stake_opened": 0.0,
                     "stake_closed": sum(t["exit_notional"] for t in liquidation_trades),
+                    "requested_stake_opened": 0.0,
+                    "clipped_stake_opened": 0.0,
+                    "clipped_open_count": 0,
+                    "skipped_open_count": 0,
                     "fees_paid": fees_paid,
                     "price_failure_count": len(liquidation_failed),
                     "price_fallback_count": sum(
@@ -1213,6 +1288,16 @@ def backtest_candidates(
         trade_events_df = pd.DataFrame(trade_events)
         total_stake_opened = u.series_sum(equity_curve, "stake_opened")
         total_stake_closed = u.series_sum(equity_curve, "stake_closed")
+        total_requested_stake_opened = u.series_sum(
+            equity_curve,
+            "requested_stake_opened",
+        )
+        total_clipped_stake_opened = u.series_sum(
+            equity_curve,
+            "clipped_stake_opened",
+        )
+        clipped_open_count = int(u.series_sum(equity_curve, "clipped_open_count"))
+        skipped_open_count = int(u.series_sum(equity_curve, "skipped_open_count"))
         total_volume = total_stake_opened + total_stake_closed
         final_portfolio_value = u.series_last(equity_curve, "portfolio_current_value")
         final_portfolio_return = u.series_last(equity_curve, "portfolio_return")
@@ -1316,6 +1401,7 @@ def backtest_candidates(
             "compound_portfolio": compound_portfolio,
             "leverage": leverage,
             "fee_pct": fee_pct,
+            "max_trader_exposure_ratio": max_trader_exposure_ratio,
             "benchmark_coins": list(benchmark_coins or []),
             "selected_rows": len(selected),
             "unique_rebalance_dates": int(selected["rebalance_at"].nunique()),
@@ -1339,6 +1425,15 @@ def backtest_candidates(
             "max_drawdown_pct": max_drawdown / starting_capital,
             "total_stake_opened": total_stake_opened,
             "total_stake_closed": total_stake_closed,
+            "total_requested_stake_opened": total_requested_stake_opened,
+            "total_clipped_stake_opened": total_clipped_stake_opened,
+            "clipped_open_count": clipped_open_count,
+            "skipped_open_count": skipped_open_count,
+            "clipped_stake_opened_rate": (
+                total_clipped_stake_opened / total_requested_stake_opened
+                if total_requested_stake_opened
+                else 0.0
+            ),
             "total_volume": total_volume,
             "turnover_on_starting_capital": total_volume / starting_capital,
             "net_pnl_on_total_volume": net_pnl_on_total_volume,
@@ -1403,6 +1498,8 @@ if __name__ == "__main__":
     print("Elapsed Seconds:", all_evaluated.iloc[0]["evaluation_elapsed_seconds"])
 
     all_scored = score_candidates(all_evaluated)
+    all_scored.to_csv("../reports/all_scored.csv", index=False)
+
     all_scored.groupby("rebalance_at")[
         "forward_return_on_history_notional"
     ].mean().cumsum().plot(label="Base")
