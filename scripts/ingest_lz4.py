@@ -6,15 +6,19 @@ Usage:
   python3 scripts/ingest_lz4.py data/node_fills_by_block
 
 Options:
-  --host localhost --port 8123 --user default --password ""
-  --database hyperliquid --table fills --data-root data
+  --host localhost
+  --port 8123
+  --user default
+  --password ""
+  --database hyperliquid
+  --table fills
+  --data-root data
   --workers 4
 """
 
 import argparse
 import json
 import multiprocessing as mp
-import os
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -213,7 +217,7 @@ def main():
     p.add_argument("--password", default="")
     p.add_argument("--database", default=DEFAULT_DATABASE)
     p.add_argument("--table", default=DEFAULT_FILLS_TABLE)
-    p.add_argument("--workers", type=int, default=os.cpu_count() or 1)
+    p.add_argument("--workers", type=int, default=mp.cpu_count() or 4)
     args = p.parse_args()
 
     db = ident(args.database)

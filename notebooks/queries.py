@@ -212,7 +212,6 @@ def evaluate_candidates(
     history_days: int = 30,
     forward_days: int = 7,
     asset_class: str | None = "perp",
-    exclude_base_columns: bool = True,
 ):
     if candidates.empty:
         return candidates.copy()
@@ -624,18 +623,8 @@ def evaluate_candidates(
 
     evaluated["evaluation_elapsed_seconds"] = elapsed
 
-    base_columns = [
-        column
-        for column in evaluated.columns
-        if column not in score_columns
-        and column not in forward_columns
-        and column != "evaluation_elapsed_seconds"
-    ]
-    if exclude_base_columns:
-        base_columns = ["address"]
-
     return evaluated[
-        base_columns + score_columns + forward_columns + ["evaluation_elapsed_seconds"]
+        ["address"] + score_columns + forward_columns + ["evaluation_elapsed_seconds"]
     ]
 
 

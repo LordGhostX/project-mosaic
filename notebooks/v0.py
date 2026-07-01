@@ -1,6 +1,5 @@
 import time
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import queries as q
 
@@ -12,7 +11,6 @@ DEFAULT_CONFIG = {
     "min_net_pnl": 0,
     "asset_class": "perp",
     "forward_days": 7,
-    "exclude_base_columns": True,
 }
 
 
@@ -42,6 +40,16 @@ DEFAULT_SCORING = {
     "apply_guardrail_penalty": True,
     "min_score_gross_notional": 0,
 }
+
+
+def _numeric_series(df, column):
+    series = pd.Series(
+        pd.to_numeric(df[column], errors="coerce"),
+        index=df.index,
+    )
+    series = series.mask(series == float("inf"), pd.NA)
+    series = series.mask(series == float("-inf"), pd.NA)
+    return series.fillna(0)
 
 
 def load(**overrides):
@@ -107,7 +115,6 @@ def evaluate_candidates(candidates, **overrides):
         history_days=config["history_days"],
         forward_days=config["forward_days"],
         asset_class=config["asset_class"],
-        exclude_base_columns=config["exclude_base_columns"],
     )
 
 
@@ -152,17 +159,8 @@ def score_candidates(evaluated, **overrides):
     if group_column not in scored.columns:
         group_column = None
 
-    def numeric_series(column):
-        series = pd.Series(
-            pd.to_numeric(scored[column], errors="coerce"),
-            index=scored.index,
-        )
-        series = series.mask(series == float("inf"), pd.NA)
-        series = series.mask(series == float("-inf"), pd.NA)
-        return series.fillna(0)
-
     def percentile_rank(column):
-        series = numeric_series(column)
+        series = _numeric_series(scored, column)
         if group_column is None:
             return series.rank(pct=True, method="average")
 
@@ -188,7 +186,7 @@ def score_candidates(evaluated, **overrides):
     guardrail_quantile = config["guardrail_quantile"]
     failed_guardrail_count = pd.Series(0, index=scored.index)
     for column in guardrail_features:
-        series = numeric_series(column)
+        series = _numeric_series(scored, column)
         if group_column is None:
             threshold = pd.Series(
                 series.quantile(guardrail_quantile), index=scored.index
@@ -206,7 +204,8 @@ def score_candidates(evaluated, **overrides):
     scored["failed_guardrail_count"] = failed_guardrail_count
     scored["passes_score_guardrails"] = scored["failed_guardrail_count"] == 0
     scored["passes_liquidity_floor"] = (
-        numeric_series("score_gross_notional") >= config["min_score_gross_notional"]
+        _numeric_series(scored, "score_gross_notional")
+        >= config["min_score_gross_notional"]
     )
     scored["eligible_for_ranking"] = (
         scored["passes_score_guardrails"] & scored["passes_liquidity_floor"]
@@ -309,18 +308,19 @@ if __name__ == "__main__":
     all_evaluated.to_csv("../reports/all_evaluated.csv", index=False)
     print("Elapsed Seconds:", all_evaluated.iloc[0]["evaluation_elapsed_seconds"])
 
-    all_scored = score_candidates(all_evaluated)
-    all_scored.groupby("rebalance_at")[
-        "forward_return_on_history_notional"
-    ].mean().cumsum().plot(label="Base")
-    all_scored.groupby("rebalance_at").head(50).groupby("rebalance_at")[
-        "forward_return_on_history_notional"
-    ].mean().cumsum().plot(label="Top 50")
-    all_scored.groupby("rebalance_at").head(75).groupby("rebalance_at")[
-        "forward_return_on_history_notional"
-    ].mean().cumsum().plot(label="Top 75")
-    all_scored.groupby("rebalance_at").head(100).groupby("rebalance_at")[
-        "forward_return_on_history_notional"
-    ].mean().cumsum().plot(label="Top 100")
-    plt.legend()
-    plt.show()
+    # import matplotlib.pyplot as plt
+    # all_scored = score_candidates(all_evaluated)
+    # all_scored.groupby("rebalance_at")[
+    #     "forward_return_on_history_notional"
+    # ].mean().cumsum().plot(label="Base")
+    # all_scored.groupby("rebalance_at").head(50).groupby("rebalance_at")[
+    #     "forward_return_on_history_notional"
+    # ].mean().cumsum().plot(label="Top 50")
+    # all_scored.groupby("rebalance_at").head(75).groupby("rebalance_at")[
+    #     "forward_return_on_history_notional"
+    # ].mean().cumsum().plot(label="Top 75")
+    # all_scored.groupby("rebalance_at").head(100).groupby("rebalance_at")[
+    #     "forward_return_on_history_notional"
+    # ].mean().cumsum().plot(label="Top 100")
+    # plt.legend()
+    # plt.show()
