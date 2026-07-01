@@ -11,7 +11,6 @@ DEFAULT_CONFIG = {
     "min_history_fills": 1,
     "min_net_pnl": 0,
     "asset_class": "perp",
-    "candidate_limit": 0,
     "forward_days": 7,
     "exclude_base_columns": True,
 }
@@ -55,7 +54,6 @@ def load(**overrides):
         min_history_fills=config["min_history_fills"],
         min_net_pnl=config["min_net_pnl"],
         asset_class=config["asset_class"],
-        limit=config["candidate_limit"],
     )
 
     return {
@@ -263,7 +261,9 @@ def score_candidates(evaluated, **overrides):
     return scored[score_columns + guardrail_columns + other_columns]
 
 
-def generate_all_evaluated(start_date="2025-07-01", end_date=None):
+def generate_all_evaluated(
+    start_date="2025-07-01", end_date=None, days=7, forward_days=7
+):
     started_at = time.perf_counter()
 
     if end_date is None:
@@ -283,20 +283,22 @@ def generate_all_evaluated(start_date="2025-07-01", end_date=None):
         raw = r["candidates"]
 
         filtered = filter_candidates(raw)
-        evaluated = evaluate_candidates(filtered, rebalance_at=rebalance_str)
+        evaluated = evaluate_candidates(
+            filtered, rebalance_at=rebalance_str, forward_days=forward_days
+        )
 
         evaluated["rebalance_at"] = rebalance_str
 
         all_evaluated.append(evaluated)
 
-        rebalance_at += pd.Timedelta(days=7)
+        rebalance_at += pd.Timedelta(days=days)
 
     all_evaluated_df = (
         pd.concat(all_evaluated, ignore_index=True)
         .sort_values("rebalance_at")
         .reset_index(drop=True)
     )
-    all_evaluated_df["scoring_elapsed_seconds"] = round(
+    all_evaluated_df["evaluation_elapsed_seconds"] = round(
         time.perf_counter() - started_at, 3
     )
     return all_evaluated_df
@@ -305,7 +307,7 @@ def generate_all_evaluated(start_date="2025-07-01", end_date=None):
 if __name__ == "__main__":
     all_evaluated = generate_all_evaluated()
     all_evaluated.to_csv("../reports/all_evaluated.csv", index=False)
-    print("Elapsed Seconds:", all_evaluated.iloc[0]["scoring_elapsed_seconds"])
+    print("Elapsed Seconds:", all_evaluated.iloc[0]["evaluation_elapsed_seconds"])
 
     all_scored = score_candidates(all_evaluated)
     all_scored.groupby("rebalance_at")[

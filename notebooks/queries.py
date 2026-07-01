@@ -114,14 +114,10 @@ def get_profitable_active_traders(
     min_history_fills: int = 1,
     min_net_pnl: float = 0,
     asset_class: str | None = "perp",
-    limit: int = 0,
 ):
     rebalance_ms = _epoch_ms(rebalance_at)
     active_start_ms = rebalance_ms - active_days * 24 * 60 * 60 * 1000
     history_start_ms = rebalance_ms - history_days * 24 * 60 * 60 * 1000
-    if limit < 0:
-        raise ValueError("limit must be >= 0")
-    limit_clause = "" if limit == 0 else "LIMIT {limit:UInt32}"
 
     sql = f"""
         WITH
@@ -190,7 +186,6 @@ def get_profitable_active_traders(
         GROUP BY address
         HAVING history_fills >= {{min_history_fills:UInt32}}
            AND net_pnl > {{min_net_pnl:Float64}}
-        {limit_clause}
     """
 
     started_at = time.perf_counter()
@@ -204,7 +199,6 @@ def get_profitable_active_traders(
             "min_net_pnl": min_net_pnl,
             "history_days": history_days,
             "asset_class": asset_class or "",
-            "limit": limit,
         },
     )
     df["query_elapsed_seconds"] = round(time.perf_counter() - started_at, 3)
@@ -685,7 +679,7 @@ def get_trader_history_fills(
           AND time < {{rebalance_ms:UInt64}}
           AND address IN (SELECT address FROM candidate_addresses)
           AND ({{asset_class:String}} = '' OR asset_class = {{asset_class:String}})
-        ORDER BY address, time, tid
+        ORDER BY time, tid
         LIMIT {{limit:UInt32}}
     """
 

@@ -162,3 +162,81 @@ twap_id         Nullable(UInt64)        -- TWAP id, if fill is associated with a
 `asset_class` is derived from the `coin` value. A fill is `spot` if `coin` is `PURR/USDC` or an `@`-prefixed spot pair ID like `@107`; otherwise it is `perp`.
 
 For the full set of `dir` / direction values, see Hydromancer's schema reference: https://docs.hydromancer.xyz/reservoir/schema-reference/fills#direction-values
+
+## Candidate Selection
+
+The basic loop is:
+
+1. Pick a `rebalance_at` date.
+2. Find traders active in the previous week.
+3. Pull their previous 30 days of fills.
+4. Keep profitable traders using net PnL: `closed_pnl - fee`.
+5. Apply simple candidate filters to reduce noisy, high-frequency, or hard-to-copy traders.
+6. Evaluate historical `score_*` metrics and 7-day `forward_*` outcomes.
+7. Rank candidates with `score_candidates()`.
+
+Example:
+
+```python
+import v0
+
+r = v0.load(rebalance_at="2025-07-01")
+raw = r["candidates"]
+
+filtered = v0.filter_candidates(raw)
+evaluated = v0.evaluate_candidates(filtered, rebalance_at="2025-07-01")
+scored = v0.score_candidates(evaluated)
+
+best = scored[scored["eligible_for_ranking"]].head(50)
+```
+
+`generate_all_evaluated()` runs the same flow across weekly rebalance dates and writes `reports/all_evaluated.csv` when `notebooks/v0.py` is run directly.
+
+## Scoring Notes
+
+Only historical `score_*` columns should be used for ranking. `forward_*` columns are labels for validation/backtesting, not inputs.
+
+The current score uses percentile ranks within each `rebalance_at` group:
+
+```text
+quality =
+    0.30 * P(score_realized_win_rate)
+  + 0.25 * average(P(score_sharpe), P(score_consistency_adjusted_return))
+  + 0.20 * P(score_return_mean)
+  + 0.05 * P(score_positive_day_rate)
+
+risk_penalty =
+    0.15 * P(score_max_drawdown_on_notional)
+  + 0.10 * P(score_fee_rate_on_notional)
+  + 0.05 * P(score_crossed_fill_rate)
+  + 0.05 * P(score_day_profit_concentration)
+
+candidate_score = quality - risk_penalty
+```
+
+`candidate_rank` is assigned within each rebalance group after sorting by:
+
+1. `rebalance_at`
+2. `eligible_for_ranking`
+3. `candidate_score_guarded`
+4. `candidate_score`
+
+## Current Learnings
+
+The strongest clean historical signal so far is `score_realized_win_rate`: it predicts higher forward return and lower forward drawdown.
+
+Useful positive signals:
+
+* `score_realized_win_rate`
+* `score_sharpe`
+* `score_consistency_adjusted_return`
+* `score_return_mean`
+* `score_positive_day_rate`
+
+Useful risk or copy-trading penalty signals:
+
+* `score_max_drawdown_on_notional`
+* `score_downside_return_std`
+* `score_fee_rate_on_notional`
+* `score_crossed_fill_rate`
+* `score_day_profit_concentration`
