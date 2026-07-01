@@ -1,5 +1,6 @@
 import time
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import queries as q
 
@@ -221,11 +222,23 @@ def score_candidates(evaluated, **overrides):
     else:
         scored["candidate_score_guarded"] = scored["candidate_score"]
 
-    scored = scored.sort_values(
-        ["eligible_for_ranking", "candidate_score_guarded", "candidate_score"],
-        ascending=[False, False, False],
-    ).reset_index(drop=True)
-    scored["candidate_rank"] = scored.index + 1
+    sort_columns = [
+        "eligible_for_ranking",
+        "candidate_score_guarded",
+        "candidate_score",
+    ]
+    ascending = [False, False, False]
+    if group_column is not None:
+        sort_columns = [group_column] + sort_columns
+        ascending = [True] + ascending
+
+    scored = scored.sort_values(sort_columns, ascending=ascending).reset_index(
+        drop=True
+    )
+    if group_column is None:
+        scored["candidate_rank"] = scored.index + 1
+    else:
+        scored["candidate_rank"] = scored.groupby(group_column).cumcount() + 1
 
     score_columns = [
         "candidate_rank",
@@ -250,9 +263,14 @@ def score_candidates(evaluated, **overrides):
     return scored[score_columns + guardrail_columns + other_columns]
 
 
-def generate_all_evaluated():
-    start_date = pd.Timestamp("2025-07-01")
-    end_date = pd.Timestamp(q.get_fills_time_bounds()["last_fill_at"])
+def generate_all_evaluated(start_date="2025-07-01", end_date=None):
+    started_at = time.perf_counter()
+
+    if end_date is None:
+        end_date = q.get_fills_time_bounds()["last_fill_at"]
+
+    start_date = pd.Timestamp(start_date)
+    end_date = pd.Timestamp(end_date)
 
     all_evaluated = []
 
@@ -273,13 +291,34 @@ def generate_all_evaluated():
 
         rebalance_at += pd.Timedelta(days=7)
 
-    return pd.concat(all_evaluated, ignore_index=True)
+    all_evaluated_df = (
+        pd.concat(all_evaluated, ignore_index=True)
+        .sort_values("rebalance_at")
+        .reset_index(drop=True)
+    )
+    all_evaluated_df["scoring_elapsed_seconds"] = round(
+        time.perf_counter() - started_at, 3
+    )
+    return all_evaluated_df
 
 
 if __name__ == "__main__":
-    started_at = time.perf_counter()
-
     all_evaluated = generate_all_evaluated()
-    all_evaluated.to_csv("../data/all_evaluated.csv", index=False)
+    all_evaluated.to_csv("../reports/all_evaluated.csv", index=False)
+    print("Elapsed Seconds:", all_evaluated.iloc[0]["scoring_elapsed_seconds"])
 
-    print("Elapsed Seconds:", round(time.perf_counter() - started_at, 3))
+    all_scored = score_candidates(all_evaluated)
+    all_scored.groupby("rebalance_at")[
+        "forward_return_on_history_notional"
+    ].mean().cumsum().plot(label="Base")
+    all_scored.groupby("rebalance_at").head(50).groupby("rebalance_at")[
+        "forward_return_on_history_notional"
+    ].mean().cumsum().plot(label="Top 50")
+    all_scored.groupby("rebalance_at").head(75).groupby("rebalance_at")[
+        "forward_return_on_history_notional"
+    ].mean().cumsum().plot(label="Top 75")
+    all_scored.groupby("rebalance_at").head(100).groupby("rebalance_at")[
+        "forward_return_on_history_notional"
+    ].mean().cumsum().plot(label="Top 100")
+    plt.legend()
+    plt.show()
