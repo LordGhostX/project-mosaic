@@ -406,8 +406,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import time
-
-    started_at = time.perf_counter()
     main()
-    print(time.perf_counter() - started_at)

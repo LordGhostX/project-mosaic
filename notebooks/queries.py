@@ -15,6 +15,7 @@ CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "default")
 CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
 CLICKHOUSE_DATABASE = os.getenv("CLICKHOUSE_DATABASE", "hyperliquid")
 FILLS_TABLE = os.getenv("CLICKHOUSE_FILLS_TABLE", "fills")
+CANDLES_TABLE = os.getenv("CLICKHOUSE_CANDLES_TABLE", "candles")
 
 
 def _ident(value: str) -> str:
@@ -25,6 +26,10 @@ def _ident(value: str) -> str:
 
 def _fills_table() -> str:
     return _ident(FILLS_TABLE)
+
+
+def _candles_table() -> str:
+    return _ident(CANDLES_TABLE)
 
 
 def _as_utc_datetime(value: str | date | datetime) -> datetime:
@@ -87,6 +92,16 @@ def _addresses_external_data(addresses: Iterable[str]) -> ExternalData:
         file_name="candidate_addresses.csv",
         fmt="CSV",
         structure="address String",
+    )
+
+
+def _coins_external_data(coins: Iterable[str]) -> ExternalData:
+    data = "".join(f"{coin}\n" for coin in coins).encode()
+    return ExternalData(
+        data=data,
+        file_name="coins.csv",
+        fmt="CSV",
+        structure="coin String",
     )
 
 
@@ -212,6 +227,7 @@ def evaluate_candidates(
     history_days: int = 30,
     forward_days: int = 7,
     asset_class: str | None = "perp",
+    exclude_forward_metrics: bool = False,
 ):
     if candidates.empty:
         return candidates.copy()
@@ -227,6 +243,7 @@ def evaluate_candidates(
     rebalance_ms = _epoch_ms(rebalance_dt)
     history_start_ms = rebalance_ms - history_days * 24 * 60 * 60 * 1000
     forward_end_ms = rebalance_ms + forward_days * 24 * 60 * 60 * 1000
+    query_end_ms = rebalance_ms if exclude_forward_metrics else forward_end_ms
 
     sql = f"""
         SELECT
@@ -251,15 +268,26 @@ def evaluate_candidates(
                 positionCaseInsensitive(dir, 'Open') > 0
                 OR dir IN ('Long > Short', 'Short > Long')
             ) AS open_fills,
+            sumIf(
+                px * sz,
+                positionCaseInsensitive(dir, 'Open') > 0
+                OR dir IN ('Long > Short', 'Short > Long')
+            ) AS open_notional,
             countIf(
                 positionCaseInsensitive(dir, 'Close') > 0
                 OR dir IN ('Long > Short', 'Short > Long')
             ) AS close_fills,
+            sumIf(
+                px * sz,
+                positionCaseInsensitive(dir, 'Close') > 0
+                OR dir IN ('Long > Short', 'Short > Long')
+            ) AS close_notional,
             countIf(dir IN ('Long > Short', 'Short > Long')) AS flip_fills,
+            sumIf(px * sz, dir IN ('Long > Short', 'Short > Long')) AS flip_notional,
             max(abs(start_position)) AS max_abs_start_position
         FROM {_fills_table()}
         WHERE time >= {{history_start_ms:UInt64}}
-          AND time < {{forward_end_ms:UInt64}}
+          AND time < {{query_end_ms:UInt64}}
           AND address IN (SELECT address FROM candidate_addresses)
           AND ({{asset_class:String}} = '' OR asset_class = {{asset_class:String}})
         GROUP BY address, period, day, coin
@@ -271,7 +299,7 @@ def evaluate_candidates(
         {
             "history_start_ms": history_start_ms,
             "rebalance_ms": rebalance_ms,
-            "forward_end_ms": forward_end_ms,
+            "query_end_ms": query_end_ms,
             "asset_class": asset_class or "",
         },
         external_data=_addresses_external_data(addresses),
@@ -298,8 +326,11 @@ def evaluate_candidates(
         "crossed_fills",
         "twap_fills",
         "open_fills",
+        "open_notional",
         "close_fills",
+        "close_notional",
         "flip_fills",
+        "flip_notional",
         "max_abs_start_position",
     ]
     for column in numeric_columns:
@@ -404,8 +435,12 @@ def evaluate_candidates(
         hist_gross_realized_profit=("gross_realized_profit", "sum"),
         hist_gross_realized_loss=("gross_realized_loss", "sum"),
         hist_crossed_fills=("crossed_fills", "sum"),
+        hist_open_fills=("open_fills", "sum"),
         hist_close_fills=("close_fills", "sum"),
+        hist_open_notional=("open_notional", "sum"),
+        hist_close_notional=("close_notional", "sum"),
         hist_flip_fills=("flip_fills", "sum"),
+        hist_flip_notional=("flip_notional", "sum"),
         hist_coins_traded=("coin", "nunique"),
     )
     score_metrics = score_metrics.merge(
@@ -478,10 +513,16 @@ def evaluate_candidates(
     score_metrics["score_avg_fill_notional"] = score_metrics[
         "hist_gross_notional"
     ] / score_metrics["hist_fills"].replace(0, pd.NA)
+    score_metrics["score_avg_open_notional"] = score_metrics[
+        "hist_open_notional"
+    ] / score_metrics["hist_open_fills"].replace(0, pd.NA)
     score_metrics["score_fills"] = score_metrics["hist_fills"]
     score_metrics["score_orders"] = score_metrics["hist_orders"]
     score_metrics["score_net_pnl"] = score_metrics["hist_net_pnl"]
     score_metrics["score_gross_notional"] = score_metrics["hist_gross_notional"]
+    score_metrics["score_open_notional"] = score_metrics["hist_open_notional"]
+    score_metrics["score_close_notional"] = score_metrics["hist_close_notional"]
+    score_metrics["score_flip_notional"] = score_metrics["hist_flip_notional"]
     score_metrics["score_coins_traded"] = score_metrics["hist_coins_traded"]
     score_metrics["score_realized_win_rate"] = score_metrics[
         "hist_winning_realized_fills"
@@ -549,10 +590,14 @@ def evaluate_candidates(
         "score_orders",
         "score_net_pnl",
         "score_gross_notional",
+        "score_open_notional",
+        "score_close_notional",
+        "score_flip_notional",
         "score_coins_traded",
         "score_net_pnl_per_notional",
         "score_fee_rate_on_notional",
         "score_avg_fill_notional",
+        "score_avg_open_notional",
         "score_realized_win_rate",
         "score_profit_factor",
         "score_avg_win",
@@ -570,43 +615,46 @@ def evaluate_candidates(
     ]
     score_metrics = score_metrics[keep_history_columns]
 
-    forward_day_stats = forward_daily.groupby("address", as_index=False).agg(
-        forward_positive_day_rate=("daily_net_pnl", lambda s: (s > 0).mean()),
-        forward_active_days=("daily_fills", lambda s: (s > 0).sum()),
-        forward_max_drawdown=("drawdown", lambda s: abs(s.min())),
-    )
-    forward_totals = forward_grain.groupby("address", as_index=False).agg(
-        forward_fills=("fills", "sum"),
-        forward_orders=("orders", "sum"),
-        forward_net_pnl=("net_pnl", "sum"),
-        forward_gross_notional=("gross_notional", "sum"),
-        forward_coins_traded=("coin", "nunique"),
-    )
-
-    forward_metrics = forward_totals.merge(
-        pd.DataFrame(forward_day_stats), on="address", how="outer"
-    )
-    forward_metrics["forward_net_pnl_per_notional"] = forward_metrics[
-        "forward_net_pnl"
-    ] / forward_metrics["forward_gross_notional"].replace(0, pd.NA)
-    forward_metrics["forward_activity_persistence"] = (
-        forward_metrics["forward_active_days"] / forward_days
-    )
-
     evaluated = evaluated.merge(score_metrics, on="address", how="left")
-    evaluated = evaluated.merge(forward_metrics, on="address", how="left")
-    evaluated["forward_return_on_history_notional"] = evaluated[
-        "forward_net_pnl"
-    ] / evaluated["gross_notional"].replace(0, pd.NA)
-    evaluated["forward_market_breadth_persistence"] = evaluated[
-        "forward_coins_traded"
-    ] / evaluated["coins_traded"].replace(0, pd.NA)
-    evaluated["signal_decay_delta"] = (
-        evaluated["forward_net_pnl_per_notional"] - evaluated["net_pnl_per_notional"]
-    )
-    evaluated["signal_decay_ratio"] = evaluated[
-        "forward_net_pnl_per_notional"
-    ] / evaluated["net_pnl_per_notional"].replace(0, pd.NA)
+
+    if not exclude_forward_metrics:
+        forward_day_stats = forward_daily.groupby("address", as_index=False).agg(
+            forward_positive_day_rate=("daily_net_pnl", lambda s: (s > 0).mean()),
+            forward_active_days=("daily_fills", lambda s: (s > 0).sum()),
+            forward_max_drawdown=("drawdown", lambda s: abs(s.min())),
+        )
+        forward_totals = forward_grain.groupby("address", as_index=False).agg(
+            forward_fills=("fills", "sum"),
+            forward_orders=("orders", "sum"),
+            forward_net_pnl=("net_pnl", "sum"),
+            forward_gross_notional=("gross_notional", "sum"),
+            forward_coins_traded=("coin", "nunique"),
+        )
+
+        forward_metrics = forward_totals.merge(
+            pd.DataFrame(forward_day_stats), on="address", how="outer"
+        )
+        forward_metrics["forward_net_pnl_per_notional"] = forward_metrics[
+            "forward_net_pnl"
+        ] / forward_metrics["forward_gross_notional"].replace(0, pd.NA)
+        forward_metrics["forward_activity_persistence"] = (
+            forward_metrics["forward_active_days"] / forward_days
+        )
+
+        evaluated = evaluated.merge(forward_metrics, on="address", how="left")
+        evaluated["forward_return_on_history_notional"] = evaluated[
+            "forward_net_pnl"
+        ] / evaluated["gross_notional"].replace(0, pd.NA)
+        evaluated["forward_market_breadth_persistence"] = evaluated[
+            "forward_coins_traded"
+        ] / evaluated["coins_traded"].replace(0, pd.NA)
+        evaluated["signal_decay_delta"] = (
+            evaluated["forward_net_pnl_per_notional"]
+            - evaluated["net_pnl_per_notional"]
+        )
+        evaluated["signal_decay_ratio"] = evaluated[
+            "forward_net_pnl_per_notional"
+        ] / evaluated["net_pnl_per_notional"].replace(0, pd.NA)
 
     score_columns = [
         column for column in evaluated.columns if column.startswith("score_")
@@ -628,24 +676,39 @@ def evaluate_candidates(
     ]
 
 
-def get_trader_history_fills(
+def get_trader_fills(
     addresses: Iterable[str],
-    rebalance_at: str | date | datetime,
+    start_at: str | date | datetime | None = None,
+    end_at: str | date | datetime | None = None,
     *,
+    rebalance_at: str | date | datetime | None = None,
     history_days: int = 30,
     asset_class: str | None = "perp",
-    limit: int = 50_000,
+    limit: int = 0,
 ):
     address_list = list(addresses)
     if not address_list:
         return pd.DataFrame()
+    if limit < 0:
+        raise ValueError("limit must be >= 0")
 
-    rebalance_ms = _epoch_ms(rebalance_at)
-    history_start_ms = rebalance_ms - history_days * 24 * 60 * 60 * 1000
+    if start_at is None or end_at is None:
+        if rebalance_at is None:
+            raise ValueError(
+                "pass start_at and end_at, or pass rebalance_at for a history window"
+            )
+        end_ms = _epoch_ms(rebalance_at)
+        start_ms = end_ms - history_days * 24 * 60 * 60 * 1000
+    else:
+        start_ms = _epoch_ms(start_at)
+        end_ms = _epoch_ms(end_at)
+
+    limit_clause = "" if limit == 0 else "LIMIT {limit:UInt32}"
 
     sql = f"""
         SELECT
             address,
+            time AS time_ms,
             toDateTime(intDiv(time, 1000), 'UTC') AS fill_at,
             coin,
             asset_class,
@@ -664,21 +727,68 @@ def get_trader_history_fills(
             fee_token,
             twap_id
         FROM {_fills_table()}
-        WHERE time >= {{history_start_ms:UInt64}}
-          AND time < {{rebalance_ms:UInt64}}
+        WHERE time >= {{start_ms:UInt64}}
+          AND time < {{end_ms:UInt64}}
           AND address IN (SELECT address FROM candidate_addresses)
           AND ({{asset_class:String}} = '' OR asset_class = {{asset_class:String}})
         ORDER BY time, tid
-        LIMIT {{limit:UInt32}}
+        {limit_clause}
     """
 
     return query_df(
         sql,
         {
-            "history_start_ms": history_start_ms,
-            "rebalance_ms": rebalance_ms,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
             "asset_class": asset_class or "",
             "limit": limit,
         },
         external_data=_addresses_external_data(address_list),
+    )
+
+
+def get_candles(
+    coins: Iterable[str],
+    start_at: str | date | datetime,
+    end_at: str | date | datetime,
+    *,
+    interval: str = "1h",
+    asset_class: str | None = "perp",
+):
+    coin_list = list(coins)
+    if not coin_list:
+        return pd.DataFrame()
+
+    sql = f"""
+        SELECT
+            bucket_start_ms,
+            bucket_end_ms,
+            toDateTime(intDiv(bucket_start_ms, 1000), 'UTC') AS bucket_start_at,
+            coin,
+            interval,
+            asset_class,
+            open,
+            high,
+            low,
+            close,
+            volume_base,
+            volume_quote
+        FROM {_candles_table()}
+        WHERE bucket_start_ms >= {{start_ms:UInt64}}
+          AND bucket_start_ms < {{end_ms:UInt64}}
+          AND interval = {{interval:String}}
+          AND coin IN (SELECT coin FROM coins)
+          AND ({{asset_class:String}} = '' OR asset_class = {{asset_class:String}})
+        ORDER BY bucket_start_ms, coin
+    """
+
+    return query_df(
+        sql,
+        {
+            "start_ms": _epoch_ms(start_at),
+            "end_ms": _epoch_ms(end_at),
+            "interval": interval,
+            "asset_class": asset_class or "",
+        },
+        external_data=_coins_external_data(coin_list),
     )
